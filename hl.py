@@ -99,7 +99,9 @@ def format_line(buffer, line):
     header_match = header_re.match(line)
     if header_match is None:
         # non-akka lines
-        buffer.write("%s%s%s" % (format(fg=BLUE, dim=False), "~" * HEADER_SIZE, reset_char))
+        
+        buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), "--:--:--.---", reset_char))
+        buffer.write("%s%s%s" % (format(bg=BLUE, dim=True), ">" * (HEADER_SIZE - TIMESTAMP_WIDTH), reset_char))
         buffer.write(line)
         return
 
