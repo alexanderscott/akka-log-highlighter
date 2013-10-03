@@ -93,19 +93,29 @@ def format_actor_name(name):
 
 header_re = re.compile("\[(\w+)\] \[(\d{2}/\d{2}/\d{4}) (\d{1,2}:\d{2}:\d{2}\.\d{3})\] \[([^\s]+)\] \[([^\s]+)\] (.*)$")
 dead_letter_re = re.compile("Message \[([^\s]+)\] from Actor\[([^\s]+)\] to Actor\[([^\s]+)\] was not delivered")
+stack_trace_re = re.compile("([\sat]+)?([\w|\.|\$]+)\(([\w|\.]+.[java|scala]):(\d+)\)$")
 
 reset_char = format(reset=True)
 
 def format_line(buffer, line):
     header_match = header_re.match(line)
     if header_match is None:
-        # non-akka lines
-        
+        # non-akka header
         buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), "--:--:--.---", reset_char))
         buffer.write("%s%s%s" % (format(fg=BLACK, bg=BLACK, bright=True), " " * DISPATCHER_WIDTH, reset_char))
         buffer.write("%s%s%s" % (format(bg=BLACK, dim=True), " " * (ACTOR_WIDTH + 1), reset_char))
         buffer.write(LOGLEVELS["NONE"])
-        buffer.write(line)
+
+        # test for stack trace        
+        stack_trace_match = stack_trace_re.match(line)
+        if not stack_trace_match is None: 
+            at_sign, scope, filename, line_no = stack_trace_match.groups()
+            scope = scope.replace("$$", " ~~ ").replace("$", " ~ ")
+            scope_header = "%s : %s" % (filename.rjust(30), line_no.rjust(6))
+            buffer.write("%s @ %s" % (scope_header, scope))
+        else:
+            buffer.write(line)
+        
         return
 
     loglevel, date, timestamp, dispatcher, actor, rest = header_match.groups()
