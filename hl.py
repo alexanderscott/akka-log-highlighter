@@ -36,10 +36,10 @@ BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
 
 # modify these parameters to suit your needs
 TIMESTAMP_WIDTH = 14
-TAGTYPE_WIDTH = 3
+LOGLEVEL_WIDTH = 3
 ACTOR_WIDTH = 30
 DISPATCHER_WIDTH = 4  # 8 or -1
-HEADER_SIZE = TIMESTAMP_WIDTH + TAGTYPE_WIDTH + 1 + DISPATCHER_WIDTH + ACTOR_WIDTH + 1
+HEADER_SIZE = TIMESTAMP_WIDTH + LOGLEVEL_WIDTH + 1 + DISPATCHER_WIDTH + ACTOR_WIDTH + 1
 
 LAST_USED = [RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE]
 
@@ -68,10 +68,11 @@ def format(fg=None, bg=None, bright=False, bold=False, dim=False, reset=False):
     return "\033[%sm" % (";".join(codes))
 
 LOGLEVELS = {
-    "DEBUG": "%s%s%s " % (format(fg=BLACK, bg=BLUE), "D".center(TAGTYPE_WIDTH), format(reset=True)),
-    "INFO": "%s%s%s " % (format(fg=BLACK, bg=GREEN), "I".center(TAGTYPE_WIDTH), format(reset=True)),
-    "WARNING": "%s%s%s " % (format(fg=BLACK, bg=YELLOW), "W".center(TAGTYPE_WIDTH), format(reset=True)),
-    "ERROR": "%s%s%s " % (format(fg=BLACK, bg=RED), "E".center(TAGTYPE_WIDTH), format(reset=True)),
+    "NONE": "%s%s%s " % (format(fg=BLACK, bg=CYAN), "-".center(LOGLEVEL_WIDTH), format(reset=True)),
+    "DEBUG": "%s%s%s " % (format(fg=BLACK, bg=BLUE), "D".center(LOGLEVEL_WIDTH), format(reset=True)),
+    "INFO": "%s%s%s " % (format(fg=BLACK, bg=GREEN), "I".center(LOGLEVEL_WIDTH), format(reset=True)),
+    "WARNING": "%s%s%s " % (format(fg=BLACK, bg=YELLOW), "W".center(LOGLEVEL_WIDTH), format(reset=True)),
+    "ERROR": "%s%s%s " % (format(fg=BLACK, bg=RED), "E".center(LOGLEVEL_WIDTH), format(reset=True)),
 }
 
 def allocate_color(actor):
@@ -101,7 +102,9 @@ def format_line(buffer, line):
         # non-akka lines
         
         buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), "--:--:--.---", reset_char))
-        buffer.write("%s%s%s" % (format(bg=BLUE, dim=True), ">" * (HEADER_SIZE - TIMESTAMP_WIDTH), reset_char))
+        buffer.write("%s%s%s" % (format(fg=BLACK, bg=BLACK, bright=True), " " * DISPATCHER_WIDTH, reset_char))
+        buffer.write("%s%s%s" % (format(bg=BLACK, dim=True), " " * (ACTOR_WIDTH + 1), reset_char))
+        buffer.write(LOGLEVELS["NONE"])
         buffer.write(line)
         return
 
@@ -126,8 +129,7 @@ def format_line(buffer, line):
     buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), timestamp, reset_char))
 
     # dispatcher
-    dispatcher = dispatcher.split("-")[-1]
-    dispatcher = dispatcher.center(DISPATCHER_WIDTH)
+    dispatcher = dispatcher.split("-")[-1].rjust(DISPATCHER_WIDTH, "0")
     buffer.write("%s%s%s" % (format(fg=BLACK, bg=BLACK, bright=True), dispatcher, reset_char))
 
     # actor
