@@ -133,7 +133,7 @@ def format_line(buffer, line):
     else:
         # dead letter message
         msg, actor1, actor2 = dead_letter_match.groups()
-        message = "[%s -> %s] %s" % (filter_actor_name(actor1), filter_actor_name(actor2), msg)
+        message = "Dead letter: [%s -> %s] %s" % (filter_actor_name(actor1), filter_actor_name(actor2), msg)
         
     # timestamp
     buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), timestamp, reset_char))
