@@ -30,20 +30,20 @@ import fcntl
 import termios
 import struct
 
-# unpack the current terminal width/height
-data = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, '1234')
-HEIGHT, WIDTH = struct.unpack('hh', data)
+import pprint
+
 BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
 
-# Modify these parameters to suit your needs
+# modify these parameters to suit your needs
+TIMESTAMP_WIDTH = 14
 TAGTYPE_WIDTH = 3
 ACTOR_WIDTH = 30
 DISPATCHER_WIDTH = 4  # 8 or -1
-HEADER_SIZE = TAGTYPE_WIDTH + 1 + ACTOR_WIDTH + 1 + DISPATCHER_WIDTH + 1
+HEADER_SIZE = TIMESTAMP_WIDTH + TAGTYPE_WIDTH + 1 + DISPATCHER_WIDTH + ACTOR_WIDTH + 1
 
 LAST_USED = [RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE]
 
-# Add fixed colors for actors here
+# add fixed colors for actors here
 KNOWN_ACTORS = {}
 
 def format(fg=None, bg=None, bright=False, bold=False, dim=False, reset=False):
@@ -67,81 +67,90 @@ def format(fg=None, bg=None, bright=False, bold=False, dim=False, reset=False):
             codes.append("22")
     return "\033[%sm" % (";".join(codes))
 
-TAGTYPES = {
+LOGLEVELS = {
     "DEBUG": "%s%s%s " % (format(fg=BLACK, bg=BLUE), "D".center(TAGTYPE_WIDTH), format(reset=True)),
     "INFO": "%s%s%s " % (format(fg=BLACK, bg=GREEN), "I".center(TAGTYPE_WIDTH), format(reset=True)),
     "WARNING": "%s%s%s " % (format(fg=BLACK, bg=YELLOW), "W".center(TAGTYPE_WIDTH), format(reset=True)),
     "ERROR": "%s%s%s " % (format(fg=BLACK, bg=RED), "E".center(TAGTYPE_WIDTH), format(reset=True)),
 }
 
-def indent_wrap(message, indent=0, width=80):
-    wrap_area = width - indent
-    messagebuf = StringIO.StringIO()
-    current = 0
-    while current < len(message):
-        next = min(current + wrap_area, len(message))
-        messagebuf.write(message[current:next])
-        if next < len(message):
-            messagebuf.write("\n%s" % (" " * indent))
-        current = next
-    return messagebuf.getvalue()
-
-
 def allocate_color(actor):
-    # this will allocate a unique format for the given actor
-    # since we dont have very many colors, we always keep track of the LRU
     if not actor in KNOWN_ACTORS:
         KNOWN_ACTORS[actor] = LAST_USED[0]
+
     color = KNOWN_ACTORS[actor]
     LAST_USED.remove(color)
     LAST_USED.append(color)
     return color
 
+
 def filter_actor_name(name):
-    return name.replace("akka://","").replace("akka.tcp://","")
+    return name.replace("akka://", "").replace("akka.tcp://", "")
 
-reactor = re.compile("\[(\w+)\] \[(\d{2}/\d{2}/\d{4}) (\d{1,2}:\d{2}:\d{2}\.\d{3})\] \[(.*)\] \[(.*)\] (.*)$")
+def format_actor_name(name):
+    return filter_actor_name(name)[-ACTOR_WIDTH:].rjust(ACTOR_WIDTH)
 
-while True:
-    try:
-        line = sys.stdin.readline()
-    except KeyboardInterrupt:
-        break
+header_re = re.compile("\[(\w+)\] \[(\d{2}/\d{2}/\d{4}) (\d{1,2}:\d{2}:\d{2}\.\d{3})\] \[([^\s]+)\] \[([^\s]+)\] (.*)$")
+dead_letter_re = re.compile("Message \[([^\s]+)\] from Actor\[([^\s]+)\] to Actor\[([^\s]+)\] was not delivered")
 
-    match = reactor.match(line)
-    if not match is None:
-        tagtype, date, timestamp, dispatcher, actor, message = match.groups()
+reset_char = format(reset=True)
 
-        linebuf = StringIO.StringIO()
+def format_line(buffer, line):
+    header_match = header_re.match(line)
+    if header_match is None:
+        # non-akka lines
+        buffer.write("%s%s%s" % (format(fg=BLUE, dim=False), "~" * HEADER_SIZE, reset_char))
+        buffer.write(line)
+        return
 
-        linebuf.write("%s %s %s" % (
-            format(fg=BLACK, bg=BLUE, bright=True), timestamp, format(reset=True)))
+    loglevel, date, timestamp, dispatcher, actor, rest = header_match.groups()
+    message = ""
 
-        # center process info
-        if DISPATCHER_WIDTH > 0:
-            dispatcher = dispatcher.split("-")[-1]
-            dispatcher = dispatcher.strip().center(DISPATCHER_WIDTH)
-            linebuf.write("%s%s%s" % (
-                format(fg=BLACK, bg=BLACK, bright=True), dispatcher, format(reset=True)))
+    if not loglevel in LOGLEVELS:
+        # invalid loglevel line
+        buffer.write("- ignored line -")
+        return
+    
+    dead_letter_match = dead_letter_re.match(rest)
+    if dead_letter_match is None:
+        # regular message
+        message = rest
+    else:
+        # dead letter message
+        msg, actor1, actor2 = dead_letter_match.groups()
+        message = "[%s -> %s] %s" % (filter_actor_name(actor1), filter_actor_name(actor2), msg)
+        
+    # timestamp
+    buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), timestamp, reset_char))
 
-        # right-align actor title and allocate color if needed
-        actor = filter_actor_name(actor.strip())
-        color = allocate_color(actor)
-        actor = actor[-ACTOR_WIDTH:].rjust(ACTOR_WIDTH)
-        linebuf.write("%s%s %s" % (
-            format(fg=color, bg=BLUE, bright=False), actor, format(reset=True)))
+    # dispatcher
+    dispatcher = dispatcher.split("-")[-1]
+    dispatcher = dispatcher.center(DISPATCHER_WIDTH)
+    buffer.write("%s%s%s" % (format(fg=BLACK, bg=BLACK, bright=True), dispatcher, reset_char))
 
-        # write out tagtype colored edge
-        if not tagtype in TAGTYPES:
-            break
-        linebuf.write(TAGTYPES[tagtype])
+    # actor
+    actor = format_actor_name(actor)
+    buffer.write("%s%s %s" % (format(fg=allocate_color(actor), dim=False), actor, reset_char))
 
-        # insert line wrapping as needed
-        message = indent_wrap(message, HEADER_SIZE, WIDTH)
+    # loglevel
+    buffer.write(LOGLEVELS[loglevel])
 
-        linebuf.write(message)
-        line = linebuf.getvalue()
+    # message
+    buffer.write(message)
 
-    print line
-    if len(line) == 0:
-        break
+try:
+    input_buffer = ''
+    output_buffer = StringIO.StringIO()
+    while True:
+        char = sys.stdin.read(1)
+        input_buffer += char
+        if (char == '\n' or char == '\r'):
+            format_line(output_buffer, input_buffer[:-1])
+            print output_buffer.getvalue()
+            output_buffer.seek(0)
+            output_buffer.truncate()
+            input_buffer = ''
+
+except KeyboardInterrupt:
+    sys.stdout.flush()
+    pass
