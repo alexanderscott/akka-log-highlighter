@@ -93,7 +93,7 @@ def format_actor_name(name):
 
 header_re = re.compile("\[(\w+)\] \[(\d{2}/\d{2}/\d{4}) (\d{1,2}:\d{2}:\d{2}\.\d{3})\] \[([^\s]+)\] \[([^\s]+)\] (.*)$")
 dead_letter_re = re.compile("Message \[([^\s]+)\] from Actor\[([^\s]+)\] to Actor\[([^\s]+)\] was not delivered")
-stack_trace_re = re.compile("([\sat]+)?([\w|\.|\$]+)\(([\w|\.]+.[java|scala]):(\d+)\)$")
+stack_trace_re = re.compile("(\s+at )?([\w|\.|\$]+)\(([\w|\.]+.[java|scala]):(\d+)\)$")
 
 reset_char = format(reset=True)
 
