@@ -39,12 +39,7 @@ TIMESTAMP_WIDTH = 14
 LOGLEVEL_WIDTH = 3
 ACTOR_WIDTH = 30
 DISPATCHER_WIDTH = 4  # 8 or -1
-HEADER_SIZE = TIMESTAMP_WIDTH + LOGLEVEL_WIDTH + 1 + DISPATCHER_WIDTH + ACTOR_WIDTH + 1
-
-LAST_USED = [RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE]
-
-# add fixed colors for actors here
-KNOWN_ACTORS = {}
+HEADER_SIZE = TIMESTAMP_WIDTH + LOGLEVEL_WIDTH + DISPATCHER_WIDTH + ACTOR_WIDTH
 
 def format(fg=None, bg=None, bright=False, bold=False, dim=False, reset=False):
     # manually derived from http://en.wikipedia.org/wiki/ANSI_escape_code#Codes
@@ -67,13 +62,30 @@ def format(fg=None, bg=None, bright=False, bold=False, dim=False, reset=False):
             codes.append("22")
     return "\033[%sm" % (";".join(codes))
 
+resetChar = format(reset=True)
+blackOverBlue = format(fg=BLACK, bg=BLUE, bright=True)
+blackOverBlack = format(fg=BLACK, bg=BLACK, bright=True)
+dimBlack = format(bg=BLACK, dim=True)
+
 LOGLEVELS = {
-    "NONE": "%s%s%s " % (format(fg=BLACK, bg=CYAN), "-".center(LOGLEVEL_WIDTH), format(reset=True)),
-    "DEBUG": "%s%s%s " % (format(fg=BLACK, bg=BLUE), "D".center(LOGLEVEL_WIDTH), format(reset=True)),
-    "INFO": "%s%s%s " % (format(fg=BLACK, bg=GREEN), "I".center(LOGLEVEL_WIDTH), format(reset=True)),
-    "WARNING": "%s%s%s " % (format(fg=BLACK, bg=YELLOW), "W".center(LOGLEVEL_WIDTH), format(reset=True)),
-    "ERROR": "%s%s%s " % (format(fg=BLACK, bg=RED), "E".center(LOGLEVEL_WIDTH), format(reset=True)),
+    "NONE": "%s%s%s " % (format(fg=BLACK, bg=CYAN), "-".center(LOGLEVEL_WIDTH), resetChar),
+    "DEBUG": "%s%s%s " % (format(fg=BLACK, bg=BLUE), "D".center(LOGLEVEL_WIDTH), resetChar),
+    "INFO": "%s%s%s " % (format(fg=BLACK, bg=GREEN), "I".center(LOGLEVEL_WIDTH), resetChar),
+    "WARNING": "%s%s%s " % (format(fg=BLACK, bg=YELLOW), "W".center(LOGLEVEL_WIDTH), resetChar),
+    "ERROR": "%s%s%s " % (format(fg=BLACK, bg=RED), "E".center(LOGLEVEL_WIDTH), resetChar),
 }
+
+# add fixed colors for actors here
+LAST_USED = [
+    format(fg=RED, dim=False), \
+    format(fg=GREEN, dim=False), \
+    format(fg=YELLOW, dim=False), \
+    format(fg=BLUE, dim=False), \
+    format(fg=MAGENTA, dim=False), \
+    format(fg=CYAN, dim=False), \
+    format(fg=WHITE, dim=False)]
+KNOWN_ACTORS = {}
+KNOWN_ACTORS_FORMAT = {}
 
 def allocate_color(actor):
     if not actor in KNOWN_ACTORS:
@@ -84,9 +96,9 @@ def allocate_color(actor):
     LAST_USED.append(color)
     return color
 
-
 def filter_actor_name(name):
     return name.replace("akka://", "").replace("akka.tcp://", "")
+
 
 def format_actor_name(name):
     return filter_actor_name(name)[-ACTOR_WIDTH:].rjust(ACTOR_WIDTH)
@@ -95,27 +107,28 @@ header_re = re.compile("\[(\w+)\] \[(\d{2}/\d{2}/\d{4}) (\d{1,2}:\d{2}:\d{2}\.\d
 dead_letter_re = re.compile("Message \[([^\s]+)\] from Actor\[([^\s]+)\] to Actor\[([^\s]+)\] was not delivered")
 stack_trace_re = re.compile("(\s+at )?([\w|\.|\$]+)\(([\w|\.]+.[java|scala]):(\d+)\)$")
 
-reset_char = format(reset=True)
+nonAkkaHeader = ''.join([ \
+    blackOverBlue, "--:--:--.---", resetChar, \
+    blackOverBlack, " " * DISPATCHER_WIDTH, resetChar, \
+    dimBlack, " " * ACTOR_WIDTH, resetChar, \
+    LOGLEVELS["NONE"]])
 
 def format_line(buffer, line):
     header_match = header_re.match(line)
     if header_match is None:
         # non-akka header
-        buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), "--:--:--.---", reset_char))
-        buffer.write("%s%s%s" % (format(fg=BLACK, bg=BLACK, bright=True), " " * DISPATCHER_WIDTH, reset_char))
-        buffer.write("%s%s%s" % (format(bg=BLACK, dim=True), " " * (ACTOR_WIDTH + 1), reset_char))
-        buffer.write(LOGLEVELS["NONE"])
+        buffer.write(nonAkkaHeader)
 
-        # test for stack trace        
+        # test for stack trace
         stack_trace_match = stack_trace_re.match(line)
-        if not stack_trace_match is None: 
+        if not stack_trace_match is None:
             at_sign, scope, filename, line_no = stack_trace_match.groups()
             scope = scope.replace("$$", " ~~ ").replace("$", " ~ ")
             scope_header = "%s : %s" % (filename.rjust(30), line_no.rjust(6))
             buffer.write("%s @ %s" % (scope_header, scope))
         else:
             buffer.write(line)
-        
+
         return
 
     loglevel, date, timestamp, dispatcher, actor, rest = header_match.groups()
@@ -125,7 +138,7 @@ def format_line(buffer, line):
         # invalid loglevel line
         buffer.write("- ignored line -")
         return
-    
+
     dead_letter_match = dead_letter_re.match(rest)
     if dead_letter_match is None:
         # regular message
@@ -134,36 +147,25 @@ def format_line(buffer, line):
         # dead letter message
         msg, actor1, actor2 = dead_letter_match.groups()
         message = "Dead letter: [%s -> %s] %s" % (filter_actor_name(actor1), filter_actor_name(actor2), msg)
-        
-    # timestamp
-    buffer.write("%s %s %s" % (format(fg=BLACK, bg=BLUE, bright=True), timestamp, reset_char))
 
-    # dispatcher
     dispatcher = dispatcher.split("-")[-1].rjust(DISPATCHER_WIDTH, "0")
-    buffer.write("%s%s%s" % (format(fg=BLACK, bg=BLACK, bright=True), dispatcher, reset_char))
-
-    # actor
     actor = format_actor_name(actor)
-    buffer.write("%s%s %s" % (format(fg=allocate_color(actor), dim=False), actor, reset_char))
 
-    # loglevel
-    buffer.write(LOGLEVELS[loglevel])
-
-    # message
-    buffer.write(message)
+    # timestamp
+    buffer.write( \
+        ''.join([ \
+            blackOverBlue, timestamp, resetChar, \
+            blackOverBlack, dispatcher, resetChar, \
+            allocate_color(actor), actor, resetChar, \
+            LOGLEVELS[loglevel], message]))
 
 try:
-    input_buffer = ''
     output_buffer = StringIO.StringIO()
-    while True:
-        char = sys.stdin.read(1)
-        input_buffer += char
-        if (char == '\n' or char == '\r'):
-            format_line(output_buffer, input_buffer[:-1])
-            print output_buffer.getvalue()
-            output_buffer.seek(0)
-            output_buffer.truncate()
-            input_buffer = ''
+    for line in sys.stdin:
+        format_line(output_buffer, line[:-1])
+        print output_buffer.getvalue()
+        output_buffer.seek(0)
+        output_buffer.truncate()
 
 except KeyboardInterrupt:
     sys.stdout.flush()
