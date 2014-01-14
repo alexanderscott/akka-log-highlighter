@@ -1,6 +1,8 @@
 akka-log-highlighter
 ====================
 
+Fork of http://jsharkey.org/downloads/coloredlogcat.pytxt
+
 Highlighter for Akka output, based on the logcat highlighter. It reads from stdin and formats whatever matches a regular expression that describes the default Akka logging output format.
 
 Usage
