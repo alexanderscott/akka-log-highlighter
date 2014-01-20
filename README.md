@@ -4,6 +4,7 @@ akka-log-highlighter
 Fork of the "colored logcat output" project (http://jsharkey.org/downloads/coloredlogcat.pytxt), which adds colors to logcat formatted output.
 
 This version is different, in the sense that doesn't run any application, but instead reads from stdin and formats all lines matching a couple of regular expressions:
+
 1) Akka log output format (actor systems, dispatchers, actors)
 2) Some Java/Scala Stacktraces
 
