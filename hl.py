@@ -161,7 +161,11 @@ def format_line(buffer, line):
 
 try:
     output_buffer = StringIO.StringIO()
-    for line in sys.stdin:
+    while True:
+    	line = sys.stdin.readline()
+    	if not line:
+    		break
+
         format_line(output_buffer, line[:-1])
         print output_buffer.getvalue()
         output_buffer.seek(0)
